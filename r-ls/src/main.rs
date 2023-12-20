@@ -1,43 +1,70 @@
-use std::{
-    env,
-    fs::DirEntry,
-    path::{Path, PathBuf},
-};
-
+use clap::{Arg, ArgAction, Command};
 use colored::Colorize;
+use std::{fs::DirEntry, path::Path};
 
 fn main() {
-    let path: PathBuf;
-    let args: Vec<String> = env::args().collect();
-    if args.len() == 1 {
-        path = env::current_dir().unwrap();
-    } else {
-        path = Path::new(&args[1]).to_path_buf();
+    let matches = define_command().get_matches();
+
+    // get paths from args
+    let path_args_result =
+        matches.get_many::<String>("FILE");
+    let paths: Vec<&Path> = match path_args_result {
+        None => vec![Path::new(".")],
+        Some(path_args) => path_args.map(|path| Path::new(path)).collect(),
+    };
+
+    // get all flag from arg
+    let all_arg = matches.get_one::<bool>("all").unwrap_or(&false);
+
+    for path in &paths {
+        if paths.len() > 1 {
+            println!("{}:", path.display());
+        }
+        print_entries(path, all_arg);
+
+        // empty line between directories, not at the end
+        if path != paths.last().unwrap() {
+            println!();
+        }
     }
-    print_entries(path);
 }
 
-fn print_entries(path: PathBuf) {
+fn define_command() -> clap::Command {
+    Command::new("r-ls")
+        .version("0.1.0")
+        .about("List information about the FILEs (the current directory by default).")
+        .arg(Arg::new("FILE").action(ArgAction::Append))
+        .arg(
+            Arg::new("all")
+                .short('a')
+                .long("all")
+                .action(ArgAction::SetTrue),
+        )
+}
+
+fn print_entries(path: &Path, show_hidden: &bool) {
     let mut entries = read_entries(path);
 
-    remove_hidden_entries(&mut entries);
+    if !show_hidden {
+        remove_hidden_entries(&mut entries);
+    }
     sort_entries(&mut entries);
 
     for entry in entries {
         print_single_entry(entry);
-        print!("  "); // spacing between entries, looks wonky, TODO: maybe arrange in grid 
+        print!("  "); // spacing between entries, looks wonky, TODO: maybe arrange in grid
     }
     println!();
 }
 
 /// Read entries of directory
-fn read_entries(path: PathBuf) -> Vec<std::fs::DirEntry> {
+fn read_entries(path: &Path) -> Vec<std::fs::DirEntry> {
     let entries_result = path.read_dir();
 
     let iter = match entries_result {
         Ok(entries) => entries,
         Err(e) => {
-            println!("r-ls: {}: {}", path.display(), e);
+            println!("r-ls: cannot access '{}': {}", path.display(), e);
             std::process::exit(1);
         }
     };
